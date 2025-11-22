@@ -1,0 +1,13 @@
+project_id = "isndyaqamlmvnxcfaozj"
+
+[functions]
+enabled = true
+
+[functions.generate-question]
+verify_jwt = false
+
+[functions.generate-confirmatory-test]
+verify_jwt = false
+
+[functions.generate-roadmap]
+verify_jwt = false
