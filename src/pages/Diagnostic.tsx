@@ -95,7 +95,9 @@ export default function Diagnostic() {
       if (testError) throw testError;
       setTestId(test.id);
 
-      // Generate first question
+      // Generate first question with delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-question`,
         {
@@ -104,6 +106,16 @@ export default function Diagnostic() {
           body: JSON.stringify({ age, errorHistory: [] }),
         }
       );
+
+      if (response.status === 429) {
+        toast({
+          variant: "destructive",
+          title: "Rate Limit Exceeded",
+          description: "Service is busy. Please try again in a moment.",
+        });
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) throw new Error("Failed to generate question");
 
@@ -162,12 +174,15 @@ export default function Diagnostic() {
       return;
     }
 
-    // Generate next question
+    // Generate next question with retry logic
     setLoading(true);
     try {
       const errorHistory = newResponses
         .filter((r) => !r.isCorrect)
         .map((r) => ({ construct: r.construct }));
+
+      // Add delay to avoid rate limits (1 second between requests)
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-question`,
@@ -177,6 +192,16 @@ export default function Diagnostic() {
           body: JSON.stringify({ age, errorHistory }),
         }
       );
+
+      if (response.status === 429) {
+        toast({
+          variant: "destructive",
+          title: "Rate Limit Exceeded",
+          description: "Too many requests. Please wait a moment before continuing.",
+        });
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) throw new Error("Failed to generate question");
 
@@ -263,9 +288,12 @@ export default function Diagnostic() {
       }
     }
     
-    // Generate confirmatory test for first blocker
+    // Generate confirmatory test for first blocker with delay
     setLoading(true);
     try {
+      // Add delay to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-confirmatory-test`,
         {
@@ -274,6 +302,16 @@ export default function Diagnostic() {
           body: JSON.stringify({ age, blockerName: detectedBlockers[0].blocker_name }),
         }
       );
+
+      if (response.status === 429) {
+        toast({
+          variant: "destructive",
+          title: "Rate Limit Exceeded",
+          description: "Please wait a moment before continuing the confirmatory test.",
+        });
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) throw new Error("Failed to generate confirmatory test");
 
@@ -300,6 +338,9 @@ export default function Diagnostic() {
   const generateRoadmap = async (allResponses: any[]) => {
     setLoading(true);
     try {
+      // Add delay to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-roadmap`,
         {
@@ -308,6 +349,16 @@ export default function Diagnostic() {
           body: JSON.stringify({ age, blockers, responses: allResponses }),
         }
       );
+
+      if (response.status === 429) {
+        toast({
+          variant: "destructive",
+          title: "Rate Limit Exceeded",
+          description: "Please wait before generating the roadmap.",
+        });
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) throw new Error("Failed to generate roadmap");
 
