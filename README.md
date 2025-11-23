@@ -1,8 +1,14 @@
-# Welcome to your Lovable project
+THIS PROJECT WAS BOOTSTRAPPED WITH USING LOVABLE 
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/b141663a-d07a-463b-8c33-03efbebbfd49
+**Project name**: Neuromath Navigator
+
+**Description**: A smart diagnostic tool that finds why a student struggles in math and gives them the exact exercises they need to improve—built especially for students with dyscalculia. It also includes an intuitive teacher dashboard that tracks progress, highlights learning blockers, and helps educators deliver targeted support.
+
+**URL**: https://neuromathai.netlify.app
+
+**Git repository**: https://github.com/Horizon-Research-Group/neuromath-navigator
 
 ## How can I edit this code?
 
@@ -59,15 +65,5 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- Supabase
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/b141663a-d07a-463b-8c33-03efbebbfd49) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
