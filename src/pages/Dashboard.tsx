@@ -22,6 +22,20 @@ interface Blocker {
   is_confirmed: boolean | null;
 }
 
+interface RoadmapStep {
+  step: number;
+  title: string;
+  description: string;
+  activities: string[];
+  duration: string;
+}
+
+interface Roadmap {
+  roadmap_data: {
+    steps: RoadmapStep[];
+  };
+}
+
 interface DiagnosticTest {
   id: string;
   student_id: string;
@@ -30,7 +44,7 @@ interface DiagnosticTest {
   completed_at: string | null;
   created_at: string;
   blockers: Blocker[];
-  has_roadmap: boolean;
+  roadmap: Roadmap | null;
 }
 
 interface StudentWithTests extends Student {
@@ -103,15 +117,18 @@ export default function Dashboard() {
 
       if (blockersError) throw blockersError;
 
-      // Fetch roadmaps to check which tests have them
+      // Fetch roadmaps with full data
       const { data: roadmaps, error: roadmapsError } = await supabase
         .from("remediation_roadmaps")
-        .select("test_id")
+        .select("test_id, roadmap_data")
         .in("test_id", testIds);
 
       if (roadmapsError) throw roadmapsError;
 
-      const roadmapTestIds = new Set(roadmaps?.map(r => r.test_id) || []);
+      const roadmapsByTest = (roadmaps || []).reduce((acc, roadmap) => {
+        acc[roadmap.test_id] = { roadmap_data: roadmap.roadmap_data as unknown as { steps: RoadmapStep[] } };
+        return acc;
+      }, {} as Record<string, Roadmap>);
 
       // Group blockers by test_id
       const blockersByTest = (blockers || []).reduce((acc, blocker) => {
@@ -120,13 +137,13 @@ export default function Dashboard() {
         return acc;
       }, {} as Record<string, Blocker[]>);
 
-      // Group tests by student_id with blockers
+      // Group tests by student_id with blockers and roadmaps
       const testsByStudent = (tests || []).reduce((acc, test) => {
         if (!acc[test.student_id]) acc[test.student_id] = [];
         acc[test.student_id].push({
           ...test,
           blockers: blockersByTest[test.id] || [],
-          has_roadmap: roadmapTestIds.has(test.id),
+          roadmap: roadmapsByTest[test.id] || null,
         });
         return acc;
       }, {} as Record<string, DiagnosticTest[]>);
@@ -291,10 +308,27 @@ export default function Dashboard() {
                           </div>
                         )}
                         
-                        {latestTest.has_roadmap && (
-                          <Button variant="outline" className="w-full mt-2">
-                            View Roadmap
-                          </Button>
+                        {latestTest.roadmap && (
+                          <div className="mt-4 pt-4 border-t border-border space-y-3">
+                            <h4 className="text-sm font-semibold">Remediation Roadmap</h4>
+                            <div className="space-y-2">
+                              {latestTest.roadmap.roadmap_data.steps.slice(0, 2).map((step) => (
+                                <div key={step.step} className="text-xs bg-muted/30 rounded p-2">
+                                  <div className="font-medium text-foreground">
+                                    Step {step.step}: {step.title}
+                                  </div>
+                                  <div className="text-muted-foreground mt-1">
+                                    {step.description}
+                                  </div>
+                                </div>
+                              ))}
+                              {latestTest.roadmap.roadmap_data.steps.length > 2 && (
+                                <p className="text-xs text-muted-foreground text-center">
+                                  +{latestTest.roadmap.roadmap_data.steps.length - 2} more steps
+                                </p>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </>
                     ) : (
