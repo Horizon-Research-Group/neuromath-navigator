@@ -22,8 +22,11 @@ interface Blocker {
 }
 
 export default function Diagnostic() {
-  const [stage, setStage] = useState<"age" | "main-test" | "confirmatory" | "roadmap">("age");
+  const [stage, setStage] = useState<"age" | "student-info" | "main-test" | "confirmatory" | "roadmap">("age");
   const [age, setAge] = useState<number | null>(null);
+  const [studentName, setStudentName] = useState("");
+  const [studentId, setStudentId] = useState<string | null>(null);
+  const [testId, setTestId] = useState<string | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [responses, setResponses] = useState<any[]>([]);
@@ -37,7 +40,7 @@ export default function Diagnostic() {
   const MAIN_TEST_LENGTH = 10;
   const CONFIRMATORY_LENGTH = 5;
 
-  const handleAgeSubmit = async () => {
+  const handleAgeSubmit = () => {
     if (!age || age < 5) {
       toast({
         variant: "destructive",
@@ -46,9 +49,52 @@ export default function Diagnostic() {
       });
       return;
     }
+    setStage("student-info");
+  };
+
+  const handleStudentInfoSubmit = async () => {
+    if (!studentName.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing Name",
+        description: "Please enter the student's name.",
+      });
+      return;
+    }
 
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({
+          variant: "destructive",
+          title: "Not Authenticated",
+          description: "Please sign in to continue.",
+        });
+        navigate("/auth");
+        return;
+      }
+
+      // Create student
+      const { data: student, error: studentError } = await supabase
+        .from("students")
+        .insert({ name: studentName, age: age!, teacher_id: session.user.id })
+        .select()
+        .single();
+
+      if (studentError) throw studentError;
+      setStudentId(student.id);
+
+      // Create diagnostic test
+      const { data: test, error: testError } = await supabase
+        .from("diagnostic_tests")
+        .insert({ student_id: student.id, age_at_test: age!, status: "in_progress" })
+        .select()
+        .single();
+
+      if (testError) throw testError;
+      setTestId(test.id);
+
       // Generate first question
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-question`,
@@ -104,12 +150,14 @@ export default function Diagnostic() {
 
     // Check if main test is complete
     if (stage === "main-test" && newResponses.length === MAIN_TEST_LENGTH) {
+      await saveResponses(newResponses.slice(0, MAIN_TEST_LENGTH));
       await detectBlockers(newResponses);
       return;
     }
 
     // Check if confirmatory test is complete
     if (stage === "confirmatory" && newResponses.length === MAIN_TEST_LENGTH + CONFIRMATORY_LENGTH) {
+      await saveResponses(newResponses.slice(MAIN_TEST_LENGTH));
       await generateRoadmap(newResponses);
       return;
     }
@@ -146,6 +194,31 @@ export default function Diagnostic() {
     }
   };
 
+  const saveResponses = async (responsesToSave: any[]) => {
+    if (!testId) return;
+
+    try {
+      const { error } = await supabase
+        .from("test_responses")
+        .insert(
+          responsesToSave.map((r) => ({
+            test_id: testId,
+            question_number: r.questionNumber,
+            question_text: r.questionText,
+            user_answer: r.userAnswer,
+            correct_answer: r.correctAnswer,
+            is_correct: r.isCorrect,
+            construct_tested: r.construct,
+            difficulty_level: r.difficultyLevel,
+          }))
+        );
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error("Error saving responses:", error);
+    }
+  };
+
   const detectBlockers = async (allResponses: any[]) => {
     // Rule-based blocker detection: 2+ errors in same construct
     const constructErrors: Record<string, number> = {};
@@ -169,6 +242,26 @@ export default function Diagnostic() {
     }
 
     setBlockers(detectedBlockers);
+
+    // Save blockers to database
+    if (testId) {
+      try {
+        const { error } = await supabase
+          .from("blockers_detected")
+          .insert(
+            detectedBlockers.map((b) => ({
+              test_id: testId,
+              blocker_name: b.blocker_name,
+              error_count: b.error_count,
+              is_confirmed: false,
+            }))
+          );
+
+        if (error) throw error;
+      } catch (error: any) {
+        console.error("Error saving blockers:", error);
+      }
+    }
     
     // Generate confirmatory test for first blocker
     setLoading(true);
@@ -220,6 +313,48 @@ export default function Diagnostic() {
 
       const roadmapData = await response.json();
       setRoadmap(roadmapData);
+
+      // Save roadmap to database
+      if (testId) {
+        const { error: roadmapError } = await supabase
+          .from("remediation_roadmaps")
+          .insert({
+            test_id: testId,
+            roadmap_data: roadmapData,
+          });
+
+        if (roadmapError) throw roadmapError;
+
+        // Calculate overall severity
+        const errorRate = allResponses.filter(r => !r.isCorrect).length / allResponses.length;
+        let severity: "none" | "mild" | "moderate" | "severe" = "none";
+        if (blockers.length >= 3 || errorRate > 0.6) severity = "severe";
+        else if (blockers.length >= 2 || errorRate > 0.4) severity = "moderate";
+        else if (blockers.length >= 1 || errorRate > 0.2) severity = "mild";
+
+        // Mark test as completed
+        const { error: testError } = await supabase
+          .from("diagnostic_tests")
+          .update({ 
+            status: "completed", 
+            completed_at: new Date().toISOString(),
+            overall_severity: severity,
+          })
+          .eq("id", testId);
+
+        if (testError) throw testError;
+
+        // Confirm blockers
+        if (blockers.length > 0) {
+          const { error: blockerError } = await supabase
+            .from("blockers_detected")
+            .update({ is_confirmed: true })
+            .eq("test_id", testId);
+
+          if (blockerError) throw blockerError;
+        }
+      }
+
       setStage("roadmap");
 
       toast({
@@ -270,6 +405,33 @@ export default function Diagnostic() {
                 />
               </div>
               <Button onClick={handleAgeSubmit} className="w-full" disabled={loading}>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Continue
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {stage === "student-info" && (
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>Student Name</CardTitle>
+              <CardDescription>What is the student's name?</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Enter student's name"
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                  onKeyPress={(e) => e.key === "Enter" && handleStudentInfoSubmit()}
+                  autoFocus
+                />
+              </div>
+              <Button onClick={handleStudentInfoSubmit} className="w-full" disabled={loading}>
                 {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Begin Assessment
               </Button>
