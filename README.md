@@ -8,7 +8,7 @@ THIS PROJECT WAS BOOTSTRAPPED WITH USING LOVABLE
 
 **URL**: https://neuromathai.netlify.app
 
-**Git repository**: https://github.com/Horizon-Research-Group/neuromath-navigator
+**Git repository of first version**: https://github.com/Horizon-Research-Group/build-with
 
 ## How can I edit this code?
 
