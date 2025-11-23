@@ -95,15 +95,13 @@ export default function Diagnostic() {
       if (testError) throw testError;
       setTestId(test.id);
 
-      // Generate first question with delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-
+      // Generate ALL 10 questions at once to avoid rate limits
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-question`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ age, errorHistory: [] }),
+          body: JSON.stringify({ age, errorHistory: [], count: 10 }),
         }
       );
 
@@ -117,10 +115,10 @@ export default function Diagnostic() {
         return;
       }
 
-      if (!response.ok) throw new Error("Failed to generate question");
+      if (!response.ok) throw new Error("Failed to generate questions");
 
-      const question = await response.json();
-      setQuestions([question]);
+      const questions = await response.json();
+      setQuestions(Array.isArray(questions) ? questions : [questions]);
       setStage("main-test");
     } catch (error: any) {
       toast({
@@ -174,49 +172,8 @@ export default function Diagnostic() {
       return;
     }
 
-    // Generate next question with retry logic
-    setLoading(true);
-    try {
-      const errorHistory = newResponses
-        .filter((r) => !r.isCorrect)
-        .map((r) => ({ construct: r.construct }));
-
-      // Add delay to avoid rate limits (1 second between requests)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-question`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ age, errorHistory }),
-        }
-      );
-
-      if (response.status === 429) {
-        toast({
-          variant: "destructive",
-          title: "Rate Limit Exceeded",
-          description: "Too many requests. Please wait a moment before continuing.",
-        });
-        setLoading(false);
-        return;
-      }
-
-      if (!response.ok) throw new Error("Failed to generate question");
-
-      const nextQuestion = await response.json();
-      setQuestions([...questions, nextQuestion]);
-      setCurrentQuestion(currentQuestion + 1);
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
-      });
-    } finally {
-      setLoading(false);
-    }
+    // Move to next question (all questions already generated)
+    setCurrentQuestion(currentQuestion + 1);
   };
 
   const saveResponses = async (responsesToSave: any[]) => {
@@ -288,12 +245,9 @@ export default function Diagnostic() {
       }
     }
     
-    // Generate confirmatory test for first blocker with delay
+    // Generate ALL confirmatory questions at once
     setLoading(true);
     try {
-      // Add delay to avoid rate limits
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-confirmatory-test`,
         {
@@ -338,9 +292,6 @@ export default function Diagnostic() {
   const generateRoadmap = async (allResponses: any[]) => {
     setLoading(true);
     try {
-      // Add delay to avoid rate limits
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-roadmap`,
         {

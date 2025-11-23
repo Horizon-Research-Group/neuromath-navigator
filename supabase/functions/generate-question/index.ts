@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { age, errorHistory } = await req.json();
+    const { age, errorHistory, count = 1 } = await req.json();
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -23,11 +23,11 @@ serve(async (req) => {
       ? `The student has struggled with: ${errorHistory.map((e: any) => e.construct).join(', ')}. Adjust difficulty accordingly.`
       : '';
 
-    const systemPrompt = `You are a dyscalculia diagnostic expert. Generate ONE adaptive math question for a ${age}-year-old student.
+    const systemPrompt = `You are a dyscalculia diagnostic expert. Generate ${count} adaptive math question${count > 1 ? 's' : ''} for a ${age}-year-old student.
     
 ${errorContext}
 
-The question should test one of these mathematical constructs:
+Each question should test one of these mathematical constructs:
 - Number Sense (magnitude comparison, number line understanding)
 - Place Value (understanding tens, hundreds, etc.)
 - Basic Arithmetic (addition, subtraction appropriate for age)
@@ -35,13 +35,22 @@ The question should test one of these mathematical constructs:
 - Spatial Reasoning
 - Working Memory (multi-step problems)
 
-Return ONLY a JSON object with this exact structure:
-{
+Return ONLY a JSON ${count > 1 ? 'array' : 'object'} with this exact structure:
+${count > 1 ? `[
+  {
+    "questionText": "Clear question text",
+    "correctAnswer": "The correct answer",
+    "construct": "Construct being tested",
+    "difficultyLevel": 1-5
+  }
+]` : `{
   "questionText": "Clear question text",
   "correctAnswer": "The correct answer",
   "construct": "Construct being tested",
   "difficultyLevel": 1-5
-}`;
+}`}
+
+Make sure questions vary in difficulty and test different constructs.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -79,16 +88,16 @@ Return ONLY a JSON object with this exact structure:
     const data = await response.json();
     const content = data.choices[0].message.content;
     
-    // Extract JSON from the response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    // Extract JSON from the response (array or object)
+    const jsonMatch = content.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error("Failed to extract JSON from AI response");
     }
     
-    const question = JSON.parse(jsonMatch[0]);
+    const result = JSON.parse(jsonMatch[0]);
 
     return new Response(
-      JSON.stringify(question),
+      JSON.stringify(result),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
